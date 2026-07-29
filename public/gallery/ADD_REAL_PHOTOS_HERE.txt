@@ -1,0 +1,10 @@
+Add the company's real JPG, JPEG, PNG, WebP, or AVIF photos to this folder.
+
+The website automatically discovers and displays the image files during the build.
+Use short descriptive file names such as:
+
+- local-home-move-charlotte.jpg
+- furniture-loading.jpg
+- junk-removal-before-after.webp
+
+Do not add stock or AI-generated images unless the business owner approves them.
