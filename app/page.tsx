@@ -76,7 +76,7 @@ export default function Home() {
               <div className="col-lg-5">
                 <div className="hero-visual">
                   <div className="hero-badge">
-                    <i className="bi bi-stars" aria-hidden="true" />
+                    <i className="bi bi-truck" aria-hidden="true" />
                     <span>
                       <strong>Dependable help</strong>
                       for moves big and small

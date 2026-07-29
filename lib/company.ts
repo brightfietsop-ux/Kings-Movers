@@ -1,5 +1,5 @@
 export const company = {
-  name: "Kings Movers and Junk Removal Services",
+  name: "Kings Movers and Junk Removal Services LLC",
   shortName: "Kings Movers",
   phoneDisplay: "(202) 308-9917",
   phoneHref: "tel:+12023089917",
