@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Image from "next/image";
+import { GalleryLightbox } from "./GalleryLightbox";
 
 const supportedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
 
@@ -39,20 +40,10 @@ export function Gallery() {
           </p>
         </div>
 
-        {images.length > 0 ? (
-          <div className="gallery-grid">
-            {images.map((image) => (
-              <figure className="gallery-item" key={image.src}>
-                <Image
-                  src={image.src}
-                  alt={image.alt}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 33vw"
-                />
-              </figure>
-            ))}
-          </div>
-        ) : (
+        {images.length > 0 ? 
+          <GalleryLightbox images={images} />
+         : 
+        (
           <div className="gallery-empty">
             <div className="gallery-empty-icon" aria-hidden="true">
               <i className="bi bi-images" />
