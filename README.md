@@ -15,7 +15,7 @@ A responsive redesign for **Kings Movers and Junk Removal Services** in Charlott
 - Click-to-call and click-to-text actions
 - Quote form with moving date, pickup/drop-off locations, both home sizes, and additional details
 - Server-side email delivery without redirecting visitors to Gmail
-- Live Google rating and reviews through Places API (New)
+- Free manual review cards, with optional Google Places review support
 - An official Google review-link button
 - A gallery that automatically reads the company's real images from `public/gallery`
 - Basic form validation, a spam honeypot, and rate limiting
@@ -25,8 +25,8 @@ A responsive redesign for **Kings Movers and Junk Removal Services** in Charlott
 - Next.js 16
 - React 19
 - React-Bootstrap and Bootstrap Icons
-- Resend for transactional quote emails
-- Google Places API (New) for live reviews
+- Nodemailer with Gmail SMTP for quote emails
+- Google Places API (New) for optional live reviews
 - Zod for server-side form validation
 
 ## Run locally
@@ -43,19 +43,42 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Configure quote emails
 
-1. Create a Resend account.
-2. Verify the domain that will send quote emails.
+The quote form sends emails directly from the website. It uses Gmail SMTP first, which lets the site send to the mover's Gmail without opening the visitor's email app.
+
+1. Use a Gmail account that has 2-Step Verification enabled.
+2. In the Google Account security settings, create an App Password for this website.
 3. Copy `.env.example` to `.env.local`.
 4. Set:
-   - `RESEND_API_KEY`
    - `QUOTE_TO_EMAIL`
-   - `QUOTE_FROM_EMAIL`
+   - `GMAIL_USER`
+   - `GMAIL_APP_PASSWORD`
 
 Quote requests are sent to `QUOTE_TO_EMAIL`, with the customer's email set as the reply-to address.
 
+For Kings Movers, use:
+
+```env
+QUOTE_TO_EMAIL=movefurniturewithkings@gmail.com
+GMAIL_USER=your-gmail-address@gmail.com
+GMAIL_APP_PASSWORD=your-google-app-password
+```
+
+After filling in `.env.local`, start the dev server and run a test email:
+
+```bash
+npm run dev
+npm run test:quote-email
+```
+
 Never commit `.env.local` or API keys.
 
-## Configure Google reviews
+Resend is still supported as an optional fallback, but it requires a verified sending domain before it can send to the mover's Gmail.
+
+## Configure reviews
+
+The site includes free manual review cards in `components/Reviews.tsx`, so the reviews section works without a paid widget service. Replace the placeholder review text with real customer quotes when they are available.
+
+## Optional Google reviews
 
 1. Enable **Places API (New)** in Google Cloud.
 2. Find the Kings Movers Google Place ID.
@@ -80,6 +103,6 @@ The build automatically discovers and displays them. Use descriptive filenames b
 - Add the original high-resolution logo.
 - Add real company project photos.
 - Add the Google Place ID and official review link.
-- Add Resend credentials and test a real quote email.
+- Add Gmail SMTP credentials and test a real quote email.
 - Replace the placeholder metadata URL in `app/layout.tsx` with the final domain.
 - Add a privacy policy before collecting customer details in production.

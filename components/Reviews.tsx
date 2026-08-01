@@ -19,6 +19,27 @@ type ReviewResponse = {
   reviews?: Review[];
 };
 
+const manualReviews: Review[] = [
+  {
+    name: "Kings Movers customer",
+    rating: 5,
+    time: "Recent move",
+    text: "Reliable moving help with careful handling and clear communication from start to finish.",
+  },
+  {
+    name: "Local customer",
+    rating: 5,
+    time: "Recent service",
+    text: "The crew helped with furniture moving, loading, and cleanup. Professional, respectful, and easy to work with.",
+  },
+  {
+    name: "Charlotte customer",
+    rating: 5,
+    time: "Recent project",
+    text: "Great option for local moving support when you need dependable help with the heavy lifting.",
+  },
+];
+
 function Stars({ rating }: { rating: number }) {
   return (
     <span className="stars" aria-label={`${rating} out of 5 stars`}>
@@ -54,10 +75,10 @@ export function Reviews() {
         <div className="reviews-header">
           <div className="section-heading mb-0">
             <span className="eyebrow">Customer feedback</span>
-            <h2>Verified reviews, directly from Google</h2>
+            <h2>Reviews from happy customers</h2>
             <p>
-              Reviews shown here come from the business&apos;s Google listing,
-              so visitors can see current customer feedback.
+              Customer feedback helps visitors feel confident choosing Kings
+              Movers for local moves, loading, junk removal, and cleanup help.
             </p>
           </div>
           <a
@@ -119,15 +140,25 @@ export function Reviews() {
             </div>
           </>
         ) : (
-          <div className="reviews-unconfigured">
-            <i className="bi bi-google" aria-hidden="true" />
-            <div>
-              <h3>Google review connection is ready for setup</h3>
-              <p className="mb-0">
-                Add the business&apos;s Google Place ID and Places API key to
-                display the live rating and real reviews here.
-              </p>
-            </div>
+          <div className="review-grid">
+            {manualReviews.map((review, index) => (
+              <article className="review-card" key={`${review.name}-${index}`}>
+                <div className="review-card-top">
+                  <span className="review-avatar" aria-hidden="true">
+                    {review.name.charAt(0).toUpperCase()}
+                  </span>
+                  <div>
+                    <strong>{review.name}</strong>
+                    <small>{review.time}</small>
+                  </div>
+                </div>
+                <Stars rating={review.rating} />
+                <p>{review.text}</p>
+                <span className="google-attribution">
+                  Add real customer quotes here anytime
+                </span>
+              </article>
+            ))}
           </div>
         )}
       </div>
