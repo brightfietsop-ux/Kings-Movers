@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { z } from "zod";
+
+export const runtime = "nodejs";
 
 const quoteSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -15,6 +18,8 @@ const quoteSchema = z.object({
   details: z.string().trim().max(3000).optional().default(""),
   company: z.string().max(0).optional().default(""),
 });
+
+type Quote = z.infer<typeof quoteSchema>;
 
 const requests = new Map<string, { count: number; resetAt: number }>();
 const WINDOW_MS = 15 * 60 * 1000;
@@ -47,107 +52,177 @@ function isRateLimited(ip: string) {
   return current.count > MAX_REQUESTS;
 }
 
+function getQuoteText(quote: Quote) {
+  return [
+    `Name: ${quote.name}`,
+    `Phone: ${quote.phone}`,
+    `Email: ${quote.email}`,
+    `Preferred moving date: ${quote.movingDate}`,
+    `Service: ${quote.serviceType}`,
+    `Pickup: ${quote.pickupAddress} (${quote.pickupSize})`,
+    `Drop-off: ${quote.dropoffAddress} (${quote.dropoffSize})`,
+    `Additional details: ${quote.details || "None provided"}`,
+  ].join("\n");
+}
+
+function getQuoteHtml(quote: Quote) {
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#10213d">
+      <h1 style="color:#0a2e73">New Kings Movers quote request</h1>
+      <table cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:680px">
+        <tr><td><strong>Name</strong></td><td>${quote.name}</td></tr>
+        <tr><td><strong>Phone</strong></td><td>${quote.phone}</td></tr>
+        <tr><td><strong>Email</strong></td><td>${quote.email}</td></tr>
+        <tr><td><strong>Moving date</strong></td><td>${quote.movingDate}</td></tr>
+        <tr><td><strong>Service</strong></td><td>${quote.serviceType}</td></tr>
+        <tr><td><strong>Pickup</strong></td><td>${quote.pickupAddress}<br>${quote.pickupSize}</td></tr>
+        <tr><td><strong>Drop-off</strong></td><td>${quote.dropoffAddress}<br>${quote.dropoffSize}</td></tr>
+        <tr><td><strong>Details</strong></td><td>${quote.details || "None provided"}</td></tr>
+      </table>
+    </div>
+  `;
+}
+
+async function sendQuoteEmail({
+  to,
+  replyTo,
+  subject,
+  text,
+  html,
+}: {
+  to: string;
+  replyTo: string;
+  subject: string;
+  text: string;
+  html: string;
+}) {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD;
+
+  if (gmailUser && gmailAppPassword) {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailUser,
+        pass: gmailAppPassword,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `Kings Movers Website <${gmailUser}>`,
+      to,
+      replyTo,
+      subject,
+      text,
+      html,
+    });
+    return;
+  }
+
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const resendFromEmail = process.env.QUOTE_FROM_EMAIL;
+
+  if (!resendApiKey || !resendFromEmail) {
+    throw new Error("Email delivery is not configured.");
+  }
+
+  const resend = new Resend(resendApiKey);
+  const { error } = await resend.emails.send({
+    from: resendFromEmail,
+    to: [to],
+    replyTo,
+    subject,
+    text,
+    html,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function POST(request: NextRequest) {
+  const isJsonRequest =
+    request.headers.get("content-type")?.includes("application/json") ?? false;
+
+  function quoteRedirect(status: "sent" | "error") {
+    const url = new URL(request.url);
+    url.pathname = "/";
+    url.search = `?quote=${status}`;
+    url.hash = "quote";
+    return NextResponse.redirect(url, { status: 303 });
+  }
+
+  function quoteError(message: string, status: number) {
+    if (!isJsonRequest) {
+      return quoteRedirect("error");
+    }
+
+    return NextResponse.json({ message }, { status });
+  }
+
   const forwardedFor = request.headers.get("x-forwarded-for");
   const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
 
   if (isRateLimited(ip)) {
-    return NextResponse.json(
-      { message: "Too many requests. Please wait a few minutes and try again." },
-      { status: 429 },
+    return quoteError(
+      "Too many requests. Please wait a few minutes and try again.",
+      429,
     );
   }
 
   let body: unknown;
 
   try {
-    body = await request.json();
+    body = isJsonRequest
+      ? await request.json()
+      : Object.fromEntries((await request.formData()).entries());
   } catch {
-    return NextResponse.json(
-      { message: "The form data could not be read." },
-      { status: 400 },
-    );
+    return quoteError("The form data could not be read.", 400);
   }
 
   const parsed = quoteSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json(
-      { message: "Please check the form and complete all required fields." },
-      { status: 400 },
+    return quoteError(
+      "Please check the form and complete all required fields.",
+      400,
     );
   }
 
   if (parsed.data.company) {
-    return NextResponse.json({ success: true });
+    return isJsonRequest
+      ? NextResponse.json({ success: true })
+      : quoteRedirect("sent");
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
   const toEmail =
     process.env.QUOTE_TO_EMAIL || "movefurniturewithkings@gmail.com";
-  const fromEmail = process.env.QUOTE_FROM_EMAIL;
-
-  if (!apiKey || !fromEmail) {
-    return NextResponse.json(
-      {
-        message:
-          "Online quotes are not connected yet. Please call (202) 308-9917.",
-      },
-      { status: 503 },
-    );
-  }
 
   const quote = Object.fromEntries(
     Object.entries(parsed.data).map(([key, value]) => [
       key,
       typeof value === "string" ? escapeHtml(value) : value,
     ]),
-  ) as typeof parsed.data;
+  ) as Quote;
 
-  const resend = new Resend(apiKey);
-
-  const { error } = await resend.emails.send({
-    from: fromEmail,
-    to: [toEmail],
-    replyTo: parsed.data.email,
-    subject: `New quote request from ${parsed.data.name}`,
-    text: [
-      `Name: ${parsed.data.name}`,
-      `Phone: ${parsed.data.phone}`,
-      `Email: ${parsed.data.email}`,
-      `Preferred moving date: ${parsed.data.movingDate}`,
-      `Service: ${parsed.data.serviceType}`,
-      `Pickup: ${parsed.data.pickupAddress} (${parsed.data.pickupSize})`,
-      `Drop-off: ${parsed.data.dropoffAddress} (${parsed.data.dropoffSize})`,
-      `Additional details: ${parsed.data.details || "None provided"}`,
-    ].join("\n"),
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#10213d">
-        <h1 style="color:#0a2e73">New Kings Movers quote request</h1>
-        <table cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:680px">
-          <tr><td><strong>Name</strong></td><td>${quote.name}</td></tr>
-          <tr><td><strong>Phone</strong></td><td>${quote.phone}</td></tr>
-          <tr><td><strong>Email</strong></td><td>${quote.email}</td></tr>
-          <tr><td><strong>Moving date</strong></td><td>${quote.movingDate}</td></tr>
-          <tr><td><strong>Service</strong></td><td>${quote.serviceType}</td></tr>
-          <tr><td><strong>Pickup</strong></td><td>${quote.pickupAddress}<br>${quote.pickupSize}</td></tr>
-          <tr><td><strong>Drop-off</strong></td><td>${quote.dropoffAddress}<br>${quote.dropoffSize}</td></tr>
-          <tr><td><strong>Details</strong></td><td>${quote.details || "None provided"}</td></tr>
-        </table>
-      </div>
-    `,
-  });
-
-  if (error) {
+  try {
+    await sendQuoteEmail({
+      to: toEmail,
+      replyTo: parsed.data.email,
+      subject: `New quote request from ${parsed.data.name}`,
+      text: getQuoteText(parsed.data),
+      html: getQuoteHtml(quote),
+    });
+  } catch (error) {
     console.error("Unable to send quote email:", error);
-    return NextResponse.json(
-      {
-        message:
-          "Your request could not be sent. Please call (202) 308-9917.",
-      },
-      { status: 502 },
+    return quoteError(
+      "Your request could not be sent. Please call (202) 308-9917.",
+      502,
     );
   }
 
-  return NextResponse.json({ success: true });
+  return isJsonRequest
+    ? NextResponse.json({ success: true })
+    : quoteRedirect("sent");
 }

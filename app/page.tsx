@@ -22,7 +22,20 @@ const reasons = [
   },
 ];
 
-export default function Home() {
+type HomeProps = {
+  searchParams?: Promise<{
+    quote?: string | string[];
+  }>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
+  const params = await searchParams;
+  const quoteParam = Array.isArray(params?.quote)
+    ? params?.quote[0]
+    : params?.quote;
+  const initialQuoteStatus =
+    quoteParam === "sent" || quoteParam === "error" ? quoteParam : undefined;
+
   return (
     <>
       <SiteNavbar />
@@ -260,7 +273,7 @@ export default function Home() {
                 </div>
               </div>
               <div className="col-lg-7">
-                <QuoteForm />
+                <QuoteForm initialStatus={initialQuoteStatus} />
               </div>
             </div>
           </div>

@@ -1,8 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type FormStatus = "idle" | "submitting" | "success" | "error";
+type InitialStatus = "sent" | "error" | undefined;
+
+const quoteFlashStorageKey = "kingsMoversQuoteFlash";
 
 const homeSizes = [
   "Studio",
@@ -16,17 +19,103 @@ const homeSizes = [
   "Other",
 ];
 
-export function QuoteForm() {
-  const [status, setStatus] = useState<FormStatus>("idle");
-  const [message, setMessage] = useState("");
+function getInitialMessage(initialStatus: InitialStatus) {
+  if (initialStatus === "sent") {
+    return "Your quote request was sent. Kings Movers will contact you soon.";
+  }
+
+  if (initialStatus === "error") {
+    return "Your request could not be sent. Please call (202) 308-9917.";
+  }
+
+  return "";
+}
+
+export function QuoteForm({ initialStatus }: { initialStatus?: InitialStatus }) {
+  const initialMessage = getInitialMessage(initialStatus);
+  const [status, setStatus] = useState<FormStatus>(
+    initialStatus === "sent"
+      ? "success"
+      : initialStatus === "error"
+        ? "error"
+        : "idle",
+  );
+  const [message, setMessage] = useState(initialMessage);
+  const [showFlash, setShowFlash] = useState(Boolean(initialMessage));
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const savedMessage = window.sessionStorage.getItem(quoteFlashStorageKey);
+    const quoteResult = searchParams.get("quote");
+
+    if (quoteResult === "sent" || quoteResult === "error") {
+      setStatus(quoteResult === "sent" ? "success" : "error");
+      setMessage(
+        savedMessage ||
+          (quoteResult === "sent"
+            ? "Your quote request was sent. Kings Movers will contact you soon."
+            : "Unable to send your request. Please call us instead."),
+      );
+      setShowFlash(true);
+      return;
+    }
+
+    if (savedMessage) {
+      setStatus("success");
+      setMessage(savedMessage);
+      setShowFlash(true);
+    }
+  }, []);
+
+  function dismissFlash() {
+    setShowFlash(false);
+    window.sessionStorage.removeItem(quoteFlashStorageKey);
+  }
+
+  useEffect(() => {
+    if (!showFlash) return;
+
+    const timeout = window.setTimeout(() => {
+      setShowFlash(false);
+    }, 9000);
+
+    return () => window.clearTimeout(timeout);
+  }, [showFlash]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("submitting");
     setMessage("");
+    setShowFlash(false);
 
     const form = event.currentTarget;
     const body = Object.fromEntries(new FormData(form).entries());
+    const scrollPosition = window.scrollY;
+
+    function keepCurrentScrollPosition() {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollPosition, behavior: "instant" });
+      });
+    }
+
+    function showResult(
+      nextStatus: Exclude<FormStatus, "idle" | "submitting">,
+      nextMessage: string,
+    ) {
+      setStatus(nextStatus);
+      setMessage(nextMessage);
+      setShowFlash(true);
+      window.sessionStorage.setItem(quoteFlashStorageKey, nextMessage);
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("quote", nextStatus === "success" ? "sent" : "error");
+      window.history.replaceState(
+        null,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+      keepCurrentScrollPosition();
+    }
 
     try {
       const response = await fetch("/api/quote", {
@@ -41,13 +130,13 @@ export function QuoteForm() {
       }
 
       form.reset();
-      setStatus("success");
-      setMessage(
+      showResult(
+        "success",
         "Your quote request was sent. Kings Movers will contact you soon.",
       );
     } catch (error) {
-      setStatus("error");
-      setMessage(
+      showResult(
+        "error",
         error instanceof Error
           ? error.message
           : "Unable to send your request. Please call us instead.",
@@ -56,8 +145,35 @@ export function QuoteForm() {
   }
 
   return (
-    <form className="quote-form" onSubmit={handleSubmit}>
-      <div className="row g-3">
+    <>
+      {showFlash && message && (
+        <div
+          className={`quote-flash ${status === "success" ? "success" : "error"}`}
+          role="status"
+          aria-live="polite"
+        >
+          <i
+            className={`bi ${status === "success" ? "bi-check-circle-fill" : "bi-exclamation-circle-fill"}`}
+            aria-hidden="true"
+          />
+          <span>{message}</span>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={dismissFlash}
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      <form
+        action="/api/quote"
+        className="quote-form"
+        method="post"
+        onSubmit={handleSubmit}
+      >
+        <div className="row g-3">
         <div className="col-md-6">
           <label className="form-label" htmlFor="name">
             Full name
@@ -217,6 +333,18 @@ export function QuoteForm() {
         </div>
 
         <div className="col-12">
+          {showFlash && message && status !== "submitting" && (
+            <div
+              className={`form-alert quote-result ${status === "success" ? "success" : "error"}`}
+              role="status"
+            >
+              <i
+                className={`bi ${status === "success" ? "bi-check-circle-fill" : "bi-exclamation-circle-fill"}`}
+                aria-hidden="true"
+              />
+              <span>{message}</span>
+            </div>
+          )}
           <button
             className="btn btn-brand w-100"
             type="submit"
@@ -238,20 +366,9 @@ export function QuoteForm() {
             Your details are sent securely to Kings Movers and are used only to
             respond to this request.
           </p>
-          {message && (
-            <div
-              className={`form-alert ${status === "success" ? "success" : "error"}`}
-              role="status"
-            >
-              <i
-                className={`bi ${status === "success" ? "bi-check-circle-fill" : "bi-exclamation-circle-fill"}`}
-                aria-hidden="true"
-              />
-              {message}
-            </div>
-          )}
         </div>
-      </div>
-    </form>
+        </div>
+      </form>
+    </>
   );
 }
